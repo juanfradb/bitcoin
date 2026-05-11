@@ -145,7 +145,7 @@ std::optional<std::vector<uint8_t>> CreateMuSig2AggregateSig(const std::vector<C
     for (const CPubKey& part_pk : part_pubkeys) {
         const auto& pn_it = pubnonces.find(part_pk);
         if (pn_it == pubnonces.end()) return std::nullopt;
-        const std::vector<uint8_t> pubnonce = pn_it->second;
+        const std::vector<uint8_t>& pubnonce = pn_it->second;
         if (pubnonce.size() != MUSIG2_PUBNONCE_SIZE) return std::nullopt;
         const auto& it = partial_sigs.find(part_pk);
         if (it == partial_sigs.end()) return std::nullopt;

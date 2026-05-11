@@ -403,7 +403,7 @@ std::optional<uint256> CKey::CreateMuSig2PartialSig(const uint256& sighash, cons
     for (const CPubKey& part_pk : pubkeys) {
         const auto& pn_it = pubnonces.find(part_pk);
         if (pn_it == pubnonces.end()) return std::nullopt;
-        const std::vector<uint8_t> pubnonce = pn_it->second;
+        const std::vector<uint8_t>& pubnonce = pn_it->second;
         if (pubnonce.size() != MUSIG2_PUBNONCE_SIZE) return std::nullopt;
         if (part_pk == our_pubkey) {
             our_pubkey_idx = signers_data.size();
