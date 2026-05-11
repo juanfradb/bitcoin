@@ -608,6 +608,10 @@ private:
     const bool m_ranged_participants;
 
     bool IsRangedDerivation() const { return m_derive != DeriveType::NON_RANGED; }
+    static bool HasDuplicateSortedPubkeys(const std::vector<CPubKey>& pubkeys)
+    {
+        return std::adjacent_find(pubkeys.begin(), pubkeys.end()) != pubkeys.end();
+    }
 
 public:
     MuSigPubkeyProvider(
@@ -645,6 +649,7 @@ public:
                 pubkeys.push_back(pubkey.value());
             }
             std::sort(pubkeys.begin(), pubkeys.end());
+            if (HasDuplicateSortedPubkeys(pubkeys)) return std::nullopt;
 
             // Aggregate the pubkey
             m_aggregate_pubkey = MuSig2AggregatePubkeys(pubkeys);
@@ -668,6 +673,7 @@ public:
             pubkeys.emplace_back(*pub);
         }
         std::sort(pubkeys.begin(), pubkeys.end());
+        if (HasDuplicateSortedPubkeys(pubkeys)) return std::nullopt;
 
         CPubKey pubout;
         if (m_aggregate_provider) {
@@ -2058,9 +2064,20 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkey(uint32_t& key_exp_index
             return true;
         };
 
+        const auto& has_duplicate_participant_keys = [&providers](size_t vec_idx) {
+            std::vector<std::string> pubkeys;
+            pubkeys.reserve(providers.size());
+            for (const auto& vec : providers) {
+                pubkeys.push_back(vec.at(vec_idx)->ToString());
+            }
+            std::sort(pubkeys.begin(), pubkeys.end());
+            return std::adjacent_find(pubkeys.begin(), pubkeys.end()) != pubkeys.end();
+        };
+
         // Emplace the final MuSigPubkeyProvider into ret with the pubkey providers from the specified provider vectors index
         // and the path from the specified path index
-        const auto& emplace_final_provider = [&ret, &key_exp_index, &deriv_type, &derivation_multipaths, &providers](size_t vec_idx, size_t path_idx) -> void {
+        const auto& emplace_final_provider = [&ret, &key_exp_index, &deriv_type, &derivation_multipaths, &providers, &has_duplicate_participant_keys](size_t vec_idx, size_t path_idx) -> bool {
+            if (has_duplicate_participant_keys(vec_idx)) return false;
             KeyPath& path = derivation_multipaths.at(path_idx);
             std::vector<std::unique_ptr<PubkeyProvider>> pubs;
             pubs.reserve(providers.size());
@@ -2068,6 +2085,7 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkey(uint32_t& key_exp_index
                 pubs.emplace_back(std::move(vec.at(vec_idx)));
             }
             ret.emplace_back(std::make_unique<MuSigPubkeyProvider>(key_exp_index, std::move(pubs), path, deriv_type));
+            return true;
         };
 
         if (max_multipath_len > 1 && derivation_multipaths.size() > 1) {
@@ -2080,7 +2098,10 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkey(uint32_t& key_exp_index
             }
             for (size_t i = 0; i < max_multipath_len; ++i) {
                 // Final MuSigPubkeyProvider uses participant pubkey providers at each multipath position, and the first (and only) path
-                emplace_final_provider(i, 0);
+                if (!emplace_final_provider(i, 0)) {
+                    error = "musig(): Duplicate participant keys are not allowed";
+                    return {};
+                }
             }
         } else if (derivation_multipaths.size() > 1) {
             // All key provider vectors should be length 1. Clone them until they have the same length as paths
@@ -2090,11 +2111,17 @@ std::vector<std::unique_ptr<PubkeyProvider>> ParsePubkey(uint32_t& key_exp_index
             }
             for (size_t i = 0; i < derivation_multipaths.size(); ++i) {
                 // Final MuSigPubkeyProvider uses cloned participant pubkey providers, and the multipath derivation paths
-                emplace_final_provider(i, i);
+                if (!emplace_final_provider(i, i)) {
+                    error = "musig(): Duplicate participant keys are not allowed";
+                    return {};
+                }
             }
         } else {
             // No multipath derivation, MuSigPubkeyProvider uses the first (and only) participant pubkey providers, and the first (and only) path
-            emplace_final_provider(0, 0);
+            if (!emplace_final_provider(0, 0)) {
+                error = "musig(): Duplicate participant keys are not allowed";
+                return {};
+            }
         }
         ++key_exp_index; // Increment key expression index for the MuSigPubkeyProvider too
         return ret;
