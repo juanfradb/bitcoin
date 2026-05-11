@@ -91,6 +91,8 @@ BOOST_AUTO_TEST_CASE(valid_keys)
 
 BOOST_AUTO_TEST_CASE(invalid_key)
 {
+    BOOST_CHECK(!MuSig2AggregatePubkeys({}).has_value());
+
     std::vector<std::string> test_vectors = {
         "00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "02DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659"
